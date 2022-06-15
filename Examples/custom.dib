@@ -1,0 +1,101 @@
+#!fsharp
+
+#r "nuget:Microsoft.Data.SqlClient"
+
+#!fsharp
+
+#r "../src/Fsharp.RelMapper/bin/Debug/net5.0/FSharp.RelMapper.dll"
+
+#!fsharp
+
+open FSharp.RelMapper
+open Microsoft.Data.SqlClient
+
+#!fsharp
+
+type Category =
+    | First
+    | Second
+    | Third
+
+module Category =
+    let ofInteger = function
+        | 1 -> First
+        | 2 -> Second
+        | 3 -> Third
+        | n -> failwithf "No such category: %d" n
+
+    let toInteger = function
+        | First -> 1
+        | Second -> 2
+        | Third -> 3
+
+type MyType1 =
+    {
+        Id : Guid
+        Category : Category
+        Description : string option
+        Value : decimal
+    }
+
+type Value = Value of float
+
+type MyType2 =
+    {
+        Id : Guid
+        Value : Category * Value
+        Description : string option
+    }
+
+module MyType1Mapper =
+    let getAll (connection : SqlConnection) =
+        connection.Query<MyType1>(
+            "select id as Id, number as Category, description as Description, value as Value from my_schema.my_table",
+            typeMap = (CustomTypeMap.Empty |> CustomTypeMap.add<_> (fun wrapper idx ->
+                wrapper.Reader.GetInt32 idx |> Category.ofInteger
+            ))
+        )
+        |> Array.ofSeq
+
+module MyType2Mapper =
+    let getAll (connection : SqlConnection) =
+        connection.Query<MyType2>(
+            "select id as Id, number, description as Description, value from my_schema.my_table",
+            typeMap = (CustomTypeMap.Empty |> CustomTypeMap.add (fun wrapper idx ->
+                wrapper.Reader.GetInt32 idx |> Category.ofInteger
+            )),
+            customAdapters = (
+                CustomTypeAdapterMap.Empty |> CustomTypeAdapterMap.add "Value" (fun wrapper ->
+                    let category = wrapper.ValueGetter("number", typeof<Category>) () |> unbox<Category>
+                    let value = wrapper.ValueGetter("value", typeof<decimal>) ()
+                    let value' = Value (Convert.ToDouble(value))
+                    category, value'
+                )
+            )
+        )
+        |> Array.ofSeq
+
+#!fsharp
+
+let connectionString = "Server=localhost;Database=<db>;UID=<uid>;PWD=<pwd>;Encrypt=false"
+
+// table create with the following code:
+// create schema my_schema
+// GO
+// create table my_schema.my_table(id uniqueidentifier primary key, number int not null, description varchar(255) null, value decimal not null)
+// go
+// insert into my_schema.my_table values
+//     ('f74c5e59-e145-430d-aa08-19f67c047863', 1, 'record 1', 1.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047864', 1, 'record 2', 2.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047865', 1, null, 3.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047866', 2, 'record 4', 4.0)    
+
+using (new SqlConnection(connectionString)) <| fun conn ->
+    conn.Open()
+    MyType1Mapper.getAll conn
+
+#!fsharp
+
+using (new SqlConnection(connectionString)) <| fun conn ->
+    conn.Open()
+    MyType2Mapper.getAll conn

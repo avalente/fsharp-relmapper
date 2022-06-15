@@ -1,0 +1,74 @@
+#!fsharp
+
+#r "nuget:Microsoft.Data.SqlClient"
+
+#!fsharp
+
+#r "../src/Fsharp.RelMapper/bin/Debug/net5.0/FSharp.RelMapper.dll"
+
+#!fsharp
+
+open FSharp.RelMapper
+open Microsoft.Data.SqlClient
+
+#!fsharp
+
+type MyRecord = 
+    {
+        Id : Guid
+        Category : int 
+        Description : string option
+        Value : decimal
+    }
+
+module MyRecordMapper =
+    let queryBase = "select id as Id, number as Category, description as Description, value as Value from my_schema.my_table"
+    
+    let getAll (connection : SqlConnection) =
+        connection.Query<MyRecord>(queryBase)
+        |> Array.ofSeq
+
+    let getByCategory (category : int) (connection : SqlConnection) =
+        connection.Query<MyRecord>(queryBase + " where number=@n", ParameterList.empty |> ParameterList.add "n" category)
+        |> Array.ofSeq
+
+    let getById (id : Guid) (connection : SqlConnection) =
+        connection.Query<MyRecord>(queryBase + " where id=@id", ParameterList.empty |> ParameterList.add "id" id)
+        |> Seq.tryExactlyOne
+
+#!fsharp
+
+let connectionString = "Server=localhost;Database=<db>;UID=<uid>;PWD=<pwd>;Encrypt=false"
+
+// table create with the following code:
+// create schema my_schema
+// GO
+// create table my_schema.my_table(id uniqueidentifier primary key, number int not null, description varchar(255) null, value decimal not null)
+// go
+// insert into my_schema.my_table values
+//     ('f74c5e59-e145-430d-aa08-19f67c047863', 1, 'record 1', 1.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047864', 1, 'record 2', 2.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047865', 1, null, 3.0), 
+//     ('f74c5e59-e145-430d-aa08-19f67c047866', 2, 'record 4', 4.0)    
+
+let rows = 
+    using (new SqlConnection(connectionString)) <| fun conn ->
+        conn.Open()
+        MyRecordMapper.getAll conn
+
+#!fsharp
+
+rows
+
+#!fsharp
+
+using (new SqlConnection(connectionString)) <| fun conn ->
+    conn.Open()
+    MyRecordMapper.getByCategory 2 conn
+
+#!fsharp
+
+using (new SqlConnection(connectionString)) <| fun conn ->
+    conn.Open()
+    MyRecordMapper.getById (Guid("f74c5e59-e145-430d-aa08-19f67c047863")) conn
+    |> printfn "%A"
