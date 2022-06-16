@@ -1,4 +1,5 @@
-﻿module FSharp.RelMapper.Tests
+﻿module FSharp.RelMapper.Tests.Main
+
 open Expecto
 
 [<EntryPoint>]

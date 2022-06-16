@@ -232,15 +232,22 @@ module ParameterList =
     let add<'t> k (v : 't) l : ParameterList = 
         (k, box v) :: l
 
+    let ofRecord<'t> (pars : 't) : ParameterList =
+        [
+            for p in FSharpType.GetRecordFields typeof<'t> do
+                p.Name, FSharpValue.GetRecordField(pars, p)
+        ]
+        |> List.rev
+
 type RelMapper() =
-    static member Query<'t>(conn : DbConnection, query : string, (?pars : ParameterList), ?txn : DbTransaction, ?typeMap, ?customAdapters) =
+    static member Query<'t>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         let typeMap = defaultArg typeMap CustomTypeMap.Empty
         let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
 
         seq {
             use cmd = conn.CreateCommand()
             cmd.CommandText <- query
-            for k, v in defaultArg pars List.empty do
+            for k, v in defaultArg pars List.empty |> List.rev do
                 let par = cmd.CreateParameter()
                 par.ParameterName <- k
                 par.Value <- v
@@ -259,8 +266,18 @@ type RelMapper() =
                 yield adapter ()
         }
 
+    static member Query<'t, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters) =
+        let pars' =
+            if FSharpType.IsRecord typeof<'p> then
+                ParameterList.ofRecord<'p> pars
+            else
+                failwithf "pars should be a record or a ParameterList"
+        RelMapper.Query<'t>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
+
 type DbConnection with
-    member self.Query<'t>(query : string, (?pars : ParameterList), ?txn : DbTransaction, ?typeMap, ?customAdapters) =
+    member self.Query<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
-
+    member self.Query<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
+        RelMapper.Query<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
+    
