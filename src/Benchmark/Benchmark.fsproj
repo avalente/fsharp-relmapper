@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Fsharp.RelMapper\FSharp.RelMapper.fsproj" />
+    <ProjectReference Include="..\FMapper\FMapper.fsproj" />
   </ItemGroup>
 
 </Project>

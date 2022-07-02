@@ -1,10 +1,10 @@
-module FSharp.RelMapper.Tests.Adapter
+module FMapper.Tests.Adapter
 
 open System
 open System.Data.Common
 open Expecto
-open FSharp.RelMapper
-open FSharp.RelMapper.Tests.Common
+open FMapper
+open FMapper.Tests.Common
         
 type BasicTypes =
     {

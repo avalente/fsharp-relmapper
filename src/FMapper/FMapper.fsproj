@@ -6,8 +6,8 @@
   </PropertyGroup>
 
     <PropertyGroup>
-    <PackageId>FSharp.RelMapper</PackageId>
-    <Title>FSharp.RelMapper</Title>
+    <PackageId>FMapper</PackageId>
+    <Title>FMapper</Title>
     <Version>0.1</Version>
     <Authors>Angelantonio Valente</Authors>
     <Description>Relational mapper for F# data structures</Description>

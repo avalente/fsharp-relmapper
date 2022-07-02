@@ -1,4 +1,4 @@
-module FSharp.RelMapper.Tests.Common
+module FMapper.Tests.Common
 
 open System
 open System.Data.Common

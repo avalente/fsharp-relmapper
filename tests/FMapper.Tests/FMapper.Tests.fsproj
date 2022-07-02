@@ -27,6 +27,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.*" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Fsharp.RelMapper\FSharp.RelMapper.fsproj" />
+    <ProjectReference Include="..\..\src\FMapper\FMapper.fsproj" />
   </ItemGroup>
 </Project>

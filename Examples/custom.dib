@@ -4,11 +4,11 @@
 
 #!fsharp
 
-#r "../src/Fsharp.RelMapper/bin/Debug/net5.0/FSharp.RelMapper.dll"
+#r "../src/FMapper/bin/Debug/net5.0/FMapper.dll"
 
 #!fsharp
 
-open FSharp.RelMapper
+open FMapper
 open Microsoft.Data.SqlClient
 
 #!fsharp

@@ -1,11 +1,11 @@
-﻿module FSharp.RelMapperBenchmark.Main
+﻿module FMapperBenchmark.Main
 
 open System
 
 open Dapper
 open Dapper.FSharp
 open BenchmarkDotNet.Attributes
-open FSharp.RelMapper
+open FMapper
 open BenchmarkDotNet.Running
 
 let Records = 10000

@@ -1,10 +1,10 @@
-module FSharp.RelMapper.Tests.Functional
+module FMapper.Tests.Functional
 
 open System
 open Expecto
 open Expecto.Logging
 open Microsoft.Data.Sqlite
-open FSharp.RelMapper
+open FMapper
 open System
 
 let logger = Log.create "Functional"

@@ -1,4 +1,4 @@
-﻿module FSharp.RelMapper
+﻿module FMapper
 
 open System
 open FSharp.Reflection

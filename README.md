@@ -1,4 +1,4 @@
-# FSharp.RelMapper
+# FMapper
 
 ### What
 This is a simple reflection-based relational mapper for F# data structures, heavily inspired by [Dapper](https://github.com/DapperLib/Dapper).
@@ -16,13 +16,13 @@ This is a simple reflection-based relational mapper for F# data structures, heav
 Install the package with your favourite tool, for instance:
 
 ```sh
-dotnet add <MyProject> package FSharp.RelMapper
+dotnet add <MyProject> package FMapper
 ```
 
 A simple example:
 
 ```fsharp
-open FSharp.RelMapper
+open FMapper
 open Microsoft.Data.SqlClient
 
 let connectionString = "Server=localhost;Database=<mydb>;UID=<uid>;PWD=<password>;Encrypt=false"

@@ -1,9 +1,9 @@
-module FSharp.RelMapper.Tests.RelMapper
+module FMapper.Tests.RelMapper
 
 open System
 open System.Data.Common
 open Expecto
-open FSharp.RelMapper
+open FMapper
 
 let ni<'t>() : 't = 
     raise (new NotImplementedException())
