@@ -220,12 +220,6 @@ let adaptTuple<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAd
             buf.[i] <- getters.[i] ()
         builder buf |> unbox<'t>
         
-let adapt<'t> customTypeMap customAdapter (reader : DbDataReader) =
-    if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader
-    elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader
-    elif typeof<'t> = typeof<obj> then failwithf "Unable to adapt type '%s' - maybe you forgot to specify the mapped type, e.g. RelMapper.Query<MyType>(...)?" typeof<'t>.Name
-    else failwithf "Unable to adapt type '%s'" typeof<'t>.Name
-
 type ParameterList = (string * obj) list
 module ParameterList =
     let empty : ParameterList = []
@@ -240,6 +234,12 @@ module ParameterList =
         |> List.rev
 
 type RelMapper() =
+    static member Adapt<'t>(customTypeMap, customAdapter, reader : DbDataReader) =
+        if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader
+        elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader
+        elif typeof<'t> = typeof<obj> then failwithf "Unable to adapt type '%s' - maybe you forgot to specify the mapped type, e.g. RelMapper.Query<MyType>(...)?" typeof<'t>.Name
+        else failwithf "Unable to adapt type '%s'" typeof<'t>.Name
+        
     static member Query<'t>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         let typeMap = defaultArg typeMap CustomTypeMap.Empty
         let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
@@ -260,7 +260,7 @@ type RelMapper() =
 
             use reader = cmd.ExecuteReader()
 
-            let adapter = adapt<'t> typeMap customAdapters reader
+            let adapter = RelMapper.Adapt<'t>(typeMap, customAdapters, reader)
 
             while reader.Read() do
                 yield adapter ()
@@ -274,10 +274,29 @@ type RelMapper() =
                 failwithf "pars should be a record or a ParameterList"
         RelMapper.Query<'t>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
+    static member QueryOne<'t>(conn, query, ?pars, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
+        let exactlyOne = defaultArg exactlyOne false
+        let res = RelMapper.Query<'t>(conn, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
+        if exactlyOne then res |> Seq.tryExactlyOne
+        else res |> Seq.tryHead
+
+    static member QueryOne<'t, 'p>(conn, query, pars, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
+        let exactlyOne = defaultArg exactlyOne false
+        let res = RelMapper.Query<'t, 'p>(conn, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
+        if exactlyOne then res |> Seq.tryExactlyOne
+        else res |> Seq.tryHead
+
 type DbConnection with
     member self.Query<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
     member self.Query<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
+    
+
+    member self.QueryOne<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?exactlyOne) =
+        RelMapper.QueryOne<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?exactlyOne=exactlyOne)
+
+    member self.QueryOne<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?exactlyOne) =
+        RelMapper.QueryOne<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?exactlyOne=exactlyOne)
     

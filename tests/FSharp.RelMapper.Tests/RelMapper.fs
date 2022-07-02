@@ -4,7 +4,6 @@ open System
 open System.Data.Common
 open Expecto
 open FSharp.RelMapper
-open System
 
 let ni<'t>() : 't = 
     raise (new NotImplementedException())

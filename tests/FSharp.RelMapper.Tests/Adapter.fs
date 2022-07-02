@@ -54,6 +54,9 @@ type CustomTypeComposite =
 
 let (=>) k v = k * v
 
+let adapt<'t> typeMap typeAdapterMap reader =
+    RelMapper.Adapt<'t>(typeMap, typeAdapterMap, reader)
+
 [<Tests>]
 let testsRecord =
     testList "test raw adapter" [
