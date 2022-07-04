@@ -46,7 +46,6 @@ type MyRecord =
         Value : decimal
     }
 
-
 let getById (id : Guid) (connection : SqlConnection) =
     let query = "select id as Id, number as Category, description as Description, value as Value from my_schema.my_table where id=@id"
     let pars = ParameterList.empty |> ParameterList.add "id" id
@@ -71,6 +70,7 @@ Please refer to the "Examples" folder for more use cases.
 
 Currently you can map query results to:
 
+1. a basic type (see the list below)
 1. F# records including anonymous records and struct
 1. F# tuples
 
@@ -100,6 +100,8 @@ A couple of extension point are provided:
 - custom type adapter (`typeMap` argument): you provide a function to build a value of a type from the underlying data; this was designed mainly to build discriminated unions values out of values stored in database tables
 - custom field adapter (`customAdapters` argument): you provide a function to build a value for a given field (named for records or stringified index for tuples, e.g. "1" for the second element).
 
+#### Parameters
+
 Parametrized queries are of course supported, you can specify query parameters in two ways:
 
 1. using the `ParameterList` structure, e.g.:
@@ -114,6 +116,61 @@ Parametrized queries are of course supported, you can specify query parameters i
     ```
 
 Refer to the notebooks in the "Examples" folder or to the unit test for usage examples.
+
+#### Multi-mapping
+
+Sometimes it is useful to map the result of a query to multiple objects (one-to-one relations), there is a limited support to this use case:
+
+```fsharp
+type MyRecord1 = 
+    {
+        Id : string
+        Category : int64
+        Description : string option
+    }
+
+type MyRecord2 =
+    {
+        Value : float
+    }
+
+let getById (id : string) (connection : SqliteConnection) =
+    let query = "select id as Id, number as Category, description as Description, value as Value from my_table1 join my_table2 using (id) where id=@id"
+    let pars = ParameterList.empty |> ParameterList.add "id" id
+    connection.Query<MyRecord1, MyRecord2>(query, pars)
+    |> Seq.tryExactlyOne
+
+using (new SqliteConnection(connectionString)) <| fun connection ->
+    connection.Open()
+    getById  "f74c5e59-e145-430d-aa08-19f67c047865" connection
+    |> printfn "%A"
+
+// output is:
+// Some ({ Id = "f74c5e59-e145-430d-aa08-19f67c047865"
+//         Category = 1L
+//         Description = None }, { Value = 3.0 })
+```
+
+In case of attributes with the same name (tipically `id`) you can use prefixes on columns together with `ColumnStrategy.Prefix` to disambiguate:
+
+```fsharp
+    let query = "select id as a_Id, number as a_Category, description as a_Description, value as b_Value, my_table2.id from my_table1 join my_table2 using (id) where id=@id"
+    connection.Query<MyRecord1, MyRecord2>(query, col1Strategy = ColumnStrategy.Prefix "a_", col2Strategy = ColumnStrategy.Prefix "b_")
+```
+
+You can mix supported types as you wish:
+
+```fsharp
+    let query = "select a.*, b.value from my_table1 a join my_table2 b using (id)"
+    connection.Query<MyRecord1, double>(
+        query, 
+        col1Strategy = Custom (function | "Category" -> "number" | x -> x.ToLower()), 
+        col2Strategy = ColumnStrategy.StartIndex 3)
+```
+
+Current limitations: 
+- only 2 types are supported (`.Query<T1, T2>` but not `.Query<T1, T2, T3>`)
+- option types are not supported (only `inner join`s, not `outer`)
 
 ### Reflection is bad!
 

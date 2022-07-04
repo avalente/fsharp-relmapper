@@ -55,34 +55,41 @@ type CustomTypeComposite =
 let (=>) k v = k * v
 
 let adapt<'t> typeMap typeAdapterMap reader =
-    RelMapper.Adapt<'t>(typeMap, typeAdapterMap, reader)
+    RelMapper.Adapter<'t>(typeMap, typeAdapterMap, reader)
+
+let adapt'<'t> reader colStrategy =
+    RelMapper.Adapter<'t>(CustomTypeMap.Empty, CustomTypeAdapterMap.Empty, reader, colStrategy)
+
+module BasicTypes =
+    let data = [
+        [box 1s; 2; 3L; 4.0f; 5.0; 6M; false; DateTime(2022, 6, 15); "test-1"; Guid("f74c5e59-e145-430d-aa08-19f67c047865"); 0]
+        [box 10s; 20; 30L; 40.0f; 50.0; 60M; true; DateTime(2022, 12, 31); "test 2"; Guid("f74c5e59-e145-430d-aa08-19f67c047866"); 0]
+    ]
+
+    let schema = 
+        [
+            SchemaItem.N("FInt16", typeof<int16>)
+            SchemaItem.N("FInt", typeof<int>)
+            SchemaItem.N("FInt64", typeof<int64>)
+            SchemaItem.N("FSingle", typeof<single>)
+            SchemaItem.N("FDouble", typeof<double>)
+            SchemaItem.N("FDecimal", typeof<decimal>)
+            SchemaItem.N("FBool", typeof<bool>)
+            SchemaItem.N("FDateTime", typeof<DateTime>)
+            SchemaItem.N("FString", typeof<string>)
+            SchemaItem.N("FGuid", typeof<Guid>)
+            SchemaItem.N("ExtraField", typeof<int>)
+        ]
+
+    let reader () =
+        new DataReader(schema, data)
 
 [<Tests>]
-let testsRecord =
+let tests =
     testList "test raw adapter" [
         testCase "record with basic types" <| fun _ ->
-            let data = [
-                [box 1s; 2; 3L; 4.0f; 5.0; 6M; false; DateTime(2022, 6, 15); "test-1"; Guid.NewGuid(); 0]
-                [box 10s; 20; 30L; 40.0f; 50.0; 60M; true; DateTime(2022, 12, 31); "test 2"; Guid.NewGuid(); 0]
-            ]
-
-            let schema = 
-                [
-                    SchemaItem.N("FInt16", typeof<int16>)
-                    SchemaItem.N("FInt", typeof<int>)
-                    SchemaItem.N("FInt64", typeof<int64>)
-                    SchemaItem.N("FSingle", typeof<single>)
-                    SchemaItem.N("FDouble", typeof<double>)
-                    SchemaItem.N("FDecimal", typeof<decimal>)
-                    SchemaItem.N("FBool", typeof<bool>)
-                    SchemaItem.N("FDateTime", typeof<DateTime>)
-                    SchemaItem.N("FString", typeof<string>)
-                    SchemaItem.N("FGuid", typeof<Guid>)
-                    SchemaItem.N("ExtraField", typeof<int>)
-                ]
-
-            use reader = new DataReader(schema, data)
-
+            use reader = BasicTypes.reader ()
+            let data = BasicTypes.data
             let adapter = adapt<BasicTypes> CustomTypeMap.Empty CustomTypeAdapterMap.Empty reader 
 
             let res = [| while reader.Read() do adapter () |]
@@ -330,26 +337,8 @@ let testsRecord =
             } "second row"
 
         testCase "anonymous record" <| fun _ ->
-            let data = [
-                [box 1s; 2; 3L; 4.0f; 5.0; 6M; false; DateTime(2022, 6, 15); "test-1"; Guid.NewGuid()]
-                [box 10s; 20; 30L; 40.0f; 50.0; 60M; true; DateTime(2022, 12, 31); "test 2"; Guid.NewGuid()]
-            ]
-
-            let schema = 
-                [
-                    SchemaItem.N("FInt16", typeof<int16>)
-                    SchemaItem.N("FInt", typeof<int>)
-                    SchemaItem.N("FInt64", typeof<int64>)
-                    SchemaItem.N("FSingle", typeof<single>)
-                    SchemaItem.N("FDouble", typeof<double>)
-                    SchemaItem.N("FDecimal", typeof<decimal>)
-                    SchemaItem.N("FBool", typeof<bool>)
-                    SchemaItem.N("FDateTime", typeof<DateTime>)
-                    SchemaItem.N("FString", typeof<string>)
-                    SchemaItem.N("FGuid", typeof<Guid>)
-                ]
-
-            use reader = new DataReader(schema, data)
+            use reader = BasicTypes.reader ()
+            let data = BasicTypes.data
 
             let adapter = 
                 adapt<{|FInt16 : int16; FInt : int; FInt64 : int64; FSingle : single; FDouble : double; FDecimal : decimal; FBool : bool; FDateTime : DateTime; FString : string; FGuid : Guid|}> 
@@ -472,6 +461,66 @@ let testsRecord =
                     (fun e -> e.Message)
 
             Expect.stringContains message "maybe" "wrong message"
+
+        testCase "primitive types: int16" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<int16> reader ColumnStrategy.AsIs
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [1s; 10s] "results"
+
+        testCase "primitive types: int32" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<int> reader (ColumnStrategy.StartIndex 1)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [2; 20] "results"
+
+        testCase "primitive types: int64" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<int64> reader (ColumnStrategy.StartIndex 2)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [3L; 30L] "results"
+
+        testCase "primitive types: single" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<single> reader (ColumnStrategy.StartIndex 3)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [4.0f; 40.0f] "results"
+
+        testCase "primitive types: double" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<double> reader (ColumnStrategy.StartIndex 4)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [5.0; 50.0] "results"
+
+        testCase "primitive types: decimal" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<decimal> reader (ColumnStrategy.StartIndex 5)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [6M; 60M] "results"
+
+        testCase "primitive types: bool" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<bool> reader (ColumnStrategy.StartIndex 6)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [false; true] "results"
+
+        testCase "primitive types: DateTime" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<DateTime> reader (ColumnStrategy.StartIndex 7)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [DateTime(2022, 6, 15); DateTime(2022, 12, 31)] "results"
+
+        testCase "primitive types: string" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<string> reader (ColumnStrategy.StartIndex 8)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res ["test-1"; "test 2"] "results"
+
+        testCase "primitive types: Guid" <| fun _ ->
+            use reader = BasicTypes.reader ()
+            let adapter = adapt'<Guid> reader (ColumnStrategy.StartIndex 9)
+            let res = [| while reader.Read() do adapter () |]
+            Expect.sequenceEqual res [Guid("f74c5e59-e145-430d-aa08-19f67c047865"); Guid("f74c5e59-e145-430d-aa08-19f67c047866")] "results"
 
     ]
 

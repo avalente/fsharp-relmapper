@@ -5,6 +5,13 @@ open FSharp.Reflection
 open System.Data.Common
 open System.Collections.Generic
 
+/// Strategy to adapt columns
+type ColumnStrategy =
+    | AsIs
+    | Custom of (string -> string)
+    | Prefix of string
+    | StartIndex of int
+
 let getBoxed<'t> (getter : DbDataReader -> int -> 't) (nullable : bool) (reader : DbDataReader) idx =
     if nullable then
         if reader.IsDBNull idx then None
@@ -28,6 +35,9 @@ let baseTypes =
         typeof<string>, getBoxed (fun (reader : DbDataReader) idx -> reader.GetString idx)
         typeof<Guid>, getBoxed (fun (reader : DbDataReader) idx -> reader.GetGuid idx)
     ]
+
+let primitiveTypes =
+    HashSet(baseTypes |> Seq.map(fun x -> x.Key))
 
 /// Type adapter for a single column
 type TypeAdapter<'t> = DataReaderWrapper -> int -> 't
@@ -67,7 +77,7 @@ and CustomTypeAdapterMap() =
 
     static member Empty = new CustomTypeAdapterMap()
 
-and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, customTypeAdapterMap : CustomTypeAdapterMap) as self =
+and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, customTypeAdapterMap : CustomTypeAdapterMap, columnStrategy : ColumnStrategy) as self =
     let map = Dictionary<string, int * bool>()
     let schema = reader.GetColumnSchemaAsync() |> Async.AwaitTask |> Async.RunSynchronously
 
@@ -92,6 +102,13 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
         match map.TryGetValue name with
         | false, _ -> raise (KeyNotFoundException($"Column not found: '{name}'"))
         | true, x -> x
+
+    member self.Find(colName : string, name) =
+        match self.TryFind colName with
+        | None -> 
+            failwithf "The data source does not contain a field named '%s' (attribute '%s')" colName name
+        | Some (idx, nullable) ->
+            (idx, nullable)
 
     member self.Reader = reader
 
@@ -139,7 +156,7 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
                 if propType.IsGenericType && propType.GetGenericTypeDefinition() = typedefof<option<_>> then
                     propType.GenericTypeArguments.[0], true
                 else
-                    if nullable then failwithf "Type mismatch on field '%s': it shouldn't be nullable" name
+                    //if nullable then failwithf "Type mismatch on field '%s': it shouldn't be nullable" name
                     propType, false
 
             if propType.IsAssignableFrom(t) |> not then 
@@ -152,13 +169,26 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
         match customTypeAdapterMap.TryGet name with
         | Some custom -> fun () -> custom self
         | None ->
-            match self.TryFind name with
-            | None -> 
-                failwithf "The data source does not contain a field named '%s'" name
-            | Some (idx, nullable) ->
+            match columnStrategy with
+            | Custom f ->
+                let colName = f name
+                let idx, nullable = self.Find(colName, name)
+                self.ValueGetter(idx, nullable, propType, colName)
+            | Prefix x -> 
+                let colName = x + name
+                let idx, nullable = self.Find(colName, name)
+                self.ValueGetter(idx, nullable, propType, colName)
+            | AsIs ->
+                let idx, nullable = self.Find(name, name)
                 self.ValueGetter(idx, nullable, propType, name)
-
+            | StartIndex i -> failwithf "invalid strategy in this context: %A" columnStrategy
+            
     member self.ValueGetter (idx : int, propType : Type) =
+        let idx = 
+            match columnStrategy with
+            | StartIndex i -> idx + i
+            | _ -> idx
+
         let name = string idx
 
         match customTypeAdapterMap.TryGet name with
@@ -176,8 +206,8 @@ module CustomTypeMap =
 module CustomTypeAdapterMap =
     let add<'t> name (f : CustomTypeAdapter<'t>) (tm : CustomTypeAdapterMap) = tm.Add(name, f)
     
-let adaptRecord<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAdapterMap) (reader : DbDataReader) =
-    let wrapper = DataReaderWrapper(reader, customTypeMap, customAdapter)
+let adaptRecord<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAdapterMap) (reader : DbDataReader) colStrategy =
+    let wrapper = DataReaderWrapper(reader, customTypeMap, customAdapter, colStrategy)
     let props = FSharpType.GetRecordFields(typeof<'t>)
 
     let getters =
@@ -198,8 +228,8 @@ let adaptRecord<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeA
             buf.[i] <- getters.[i] ()
         builder buf |> unbox<'t>
 
-let adaptTuple<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAdapterMap) (reader : DbDataReader) =
-    let wrapper = DataReaderWrapper(reader, customTypeMap, customAdapter)
+let adaptTuple<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAdapterMap) (reader : DbDataReader) colStrategy =
+    let wrapper = DataReaderWrapper(reader, customTypeMap, customAdapter, colStrategy)
     let types = FSharpType.GetTupleElements(typeof<'t>)
 
     let getters =
@@ -219,6 +249,14 @@ let adaptTuple<'t> (customTypeMap : CustomTypeMap) (customAdapter : CustomTypeAd
         for i = 0 to limit do
             buf.[i] <- getters.[i] ()
         builder buf |> unbox<'t>
+
+let adaptPrimitive<'t> (reader : DbDataReader) colStrategy =
+    let wrapper = DataReaderWrapper(reader, CustomTypeMap.Empty, CustomTypeAdapterMap.Empty, colStrategy)
+
+    let g = wrapper.ValueGetter(0, typeof<'t>)
+
+    fun () ->
+        g () |> unbox<'t>
         
 type ParameterList = (string * obj) list
 module ParameterList =
@@ -234,38 +272,68 @@ module ParameterList =
         |> List.rev
 
 type RelMapper() =
-    static member Adapt<'t>(customTypeMap, customAdapter, reader : DbDataReader) =
-        if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader
-        elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader
+    static member Adapter<'t>(customTypeMap, customAdapter, reader : DbDataReader, ?colStrategy) =
+        let colStrategy = defaultArg colStrategy AsIs
+
+        if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader colStrategy
+        elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader colStrategy
         elif typeof<'t> = typeof<obj> then failwithf "Unable to adapt type '%s' - maybe you forgot to specify the mapped type, e.g. RelMapper.Query<MyType>(...)?" typeof<'t>.Name
+        elif primitiveTypes.Contains typeof<'t> then adaptPrimitive<'t> reader colStrategy
         else failwithf "Unable to adapt type '%s'" typeof<'t>.Name
         
+    static member Adapters<'t1, 't2>(customTypeMap, customAdapter, reader : DbDataReader, col1Strategy, col2Strategy) =
+        let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
+        let a2 = RelMapper.Adapter<'t2>(customTypeMap, customAdapter, reader, col2Strategy)
+        a1, a2
+        
+    static member ExecuteRawReader(conn : DbConnection, query : string, pars : ParameterList option, txn : DbTransaction option) =
+        let cmd = conn.CreateCommand()
+        cmd.CommandText <- query
+        for k, v in defaultArg pars List.empty |> List.rev do
+            let par = cmd.CreateParameter()
+            par.ParameterName <- k
+            par.Value <- v
+            cmd.Parameters.Add(par) |> ignore
+
+        match txn with
+        | None -> ()
+        | Some txn ->
+            cmd.Transaction <- txn
+
+        let reader = cmd.ExecuteReader()
+
+        let disposer = {new IDisposable with member __.Dispose() = reader.Dispose(); cmd.Dispose()}
+
+        disposer, reader
+
     static member Query<'t>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         let typeMap = defaultArg typeMap CustomTypeMap.Empty
         let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
 
         seq {
-            use cmd = conn.CreateCommand()
-            cmd.CommandText <- query
-            for k, v in defaultArg pars List.empty |> List.rev do
-                let par = cmd.CreateParameter()
-                par.ParameterName <- k
-                par.Value <- v
-                cmd.Parameters.Add(par) |> ignore
+            let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
+            use _ = disposer 
 
-            match txn with
-            | None -> ()
-            | Some txn ->
-                cmd.Transaction <- txn
-
-            use reader = cmd.ExecuteReader()
-
-            let adapter = RelMapper.Adapt<'t>(typeMap, customAdapters, reader)
+            let adapter = RelMapper.Adapter<'t>(typeMap, customAdapters, reader)
 
             while reader.Read() do
                 yield adapter ()
         }
 
+    static member Query<'t1, 't2>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
+        let typeMap = defaultArg typeMap CustomTypeMap.Empty
+        let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
+
+        seq {
+            let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
+            use _ = disposer 
+
+            let a1, a2 = RelMapper.Adapters<'t1, 't2>(typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs)
+    
+            while reader.Read() do
+                yield a1 (), a2 ()
+        }
+    
     static member Query<'t, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters) =
         let pars' =
             if FSharpType.IsRecord typeof<'p> then
@@ -274,13 +342,21 @@ type RelMapper() =
                 failwithf "pars should be a record or a ParameterList"
         RelMapper.Query<'t>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
+    static member Query<'t1, 't2, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
+        let pars' =
+            if FSharpType.IsRecord typeof<'p> then
+                ParameterList.ofRecord<'p> pars
+            else
+                failwithf "pars should be a record or a ParameterList"
+        RelMapper.Query<'t1, 't2>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+    
     static member QueryOne<'t>(conn, query, ?pars, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
         let exactlyOne = defaultArg exactlyOne false
         let res = RelMapper.Query<'t>(conn, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
         if exactlyOne then res |> Seq.tryExactlyOne
         else res |> Seq.tryHead
 
-    static member QueryOne<'t, 'p>(conn, query, pars, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
+    static member QueryOne<'t, 'p>(conn, query, pars : 'p, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
         let exactlyOne = defaultArg exactlyOne false
         let res = RelMapper.Query<'t, 'p>(conn, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
         if exactlyOne then res |> Seq.tryExactlyOne
@@ -290,10 +366,15 @@ type DbConnection with
     member self.Query<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
+    member self.Query<'t1, 't2>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
+        RelMapper.Query<'t1, 't2>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+    
     member self.Query<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
-    
 
+    member self.Query<'t1, 't2, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
+        RelMapper.Query<'t1, 't2, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+    
     member self.QueryOne<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?exactlyOne) =
         RelMapper.QueryOne<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?exactlyOne=exactlyOne)
 

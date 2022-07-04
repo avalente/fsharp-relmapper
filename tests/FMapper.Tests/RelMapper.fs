@@ -110,6 +110,18 @@ type FakeDbConnection(schema, data) as self =
 
     member __.Cmd = cmd
 
+type RecA = 
+    {
+        Id : Guid
+        Description : string
+    }
+
+type RecB =
+    {
+        Id : int
+        Value : float
+    }
+
 [<Tests>]
 let testsRecord =
     testList "test RelMapper wrapper" [
@@ -138,5 +150,75 @@ let testsRecord =
             let pars = [for x in conn.Cmd.Parameters do x.ParameterName, x.Value]
 
             Expect.sequenceEqual pars ["a", box 1; "b", box "test"] "parameters"
+
+        testCase "multimapper with tuples explicit" <| fun _ ->
+            use conn = 
+                new FakeDbConnection(
+                    [
+                        Common.SchemaItem.N("a_id", typeof<Guid>)
+                        Common.SchemaItem.N("a_description", typeof<string>)
+                        Common.SchemaItem.N("b_id", typeof<int>)
+                        Common.SchemaItem.N("b_value", typeof<float>)
+                        ], [
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 1; 10.0]
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 2; 20.0]
+                            [Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"); "second record"; 1; 1.1]
+                        ]
+                )
+
+            let res = RelMapper.Query<Guid*string, int*float>(conn, "select * from sometable", col2Strategy = StartIndex 2)
+
+            Expect.sequenceEqual res [
+                (Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"), "first record"), (1, 10.)
+                (Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"), "first record"), (2, 20.)
+                (Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"), "second record"), (1, 1.1)
+            ] "results"
+
+        testCase "multimapper with records" <| fun _ ->
+            use conn = 
+                new FakeDbConnection(
+                    [
+                        Common.SchemaItem.N("a_Id", typeof<Guid>)
+                        Common.SchemaItem.N("a_Description", typeof<string>)
+                        Common.SchemaItem.N("b_Id", typeof<int>)
+                        Common.SchemaItem.N("b_Value", typeof<float>)
+                        ], [
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 1; 10.0]
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 2; 20.0]
+                            [Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"); "second record"; 1; 1.1]
+                        ]
+                )
+
+            let res = RelMapper.Query<RecA, RecB>(conn, "select * from sometable", col1Strategy = Prefix "a_", col2Strategy = Prefix "b_")
+
+            Expect.sequenceEqual res [
+                {Id = Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); Description = "first record"}, {Id = 1; Value = 10.}
+                {Id = Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); Description = "first record"}, {Id = 2; Value = 20.}
+                {Id = Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"); Description = "second record"}, {Id = 1; Value = 1.1}
+            ] "results"
+
+        testCase "multimapper with mixed types" <| fun _ ->
+            use conn = 
+                new FakeDbConnection(
+                    [
+                        Common.SchemaItem.N("Id", typeof<Guid>)
+                        Common.SchemaItem.N("Description", typeof<string>)
+                        Common.SchemaItem.N("OtherId", typeof<int>)
+                        Common.SchemaItem.N("Value", typeof<float>)
+                        ], [
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 1; 10.0]
+                            [Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); "first record"; 2; 20.0]
+                            [Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"); "second record"; 1; 1.1]
+                        ]
+                )
+
+            let res = RelMapper.Query<RecA, int*float>(conn, "select * from sometable", col2Strategy = StartIndex 2)
+
+            Expect.sequenceEqual res [
+                {Id = Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); Description = "first record"}, (1, 10.)
+                {Id = Guid("86C17673-CDE4-4E00-99C6-49AA6F72EABE"); Description = "first record"}, (2, 20.)
+                {Id = Guid("3D5A33D2-6179-44A4-AB75-D9455605E62D"); Description = "second record"}, (1, 1.1)
+            ] "results"
+
 
     ]
