@@ -100,13 +100,33 @@ A couple of extension point are provided:
 - custom type adapter (`typeMap` argument): you provide a function to build a value of a type from the underlying data; this was designed mainly to build discriminated unions values out of values stored in database tables
 - custom field adapter (`customAdapters` argument): you provide a function to build a value for a given field (named for records or stringified index for tuples, e.g. "1" for the second element).
 
+Parametrized queries are of course supported, you can specify query parameters in two ways:
+
+1. using the `ParameterList` structure, e.g.:
+    ```fsharp
+    ParameterList.Empty 
+    |> ParameterList.add "a" 1 
+    |> ParameterList.add "b" "test"
+    ```
+1. using a record or anonymous record, e.g.:
+    ```fsharp
+    {| a = 1; b = "test" |}
+    ```
+
 Refer to the notebooks in the "Examples" folder or to the unit test for usage examples.
 
 ### Reflection is bad!
 
-True, using reflection makes the code slow and fragile and in F# we have the wonderful tools named `type providers`, but there are cases in which a more "dynamic" approach is needed, in those cases a simple reflection-based tool may be a good compromise.
+True, using reflection makes the code slow and fragile and in F# we have those wonderful tools named `type providers`, but there are cases in which a more "dynamic" approach is needed, for such cases a simple reflection-based tool may be a good tradeoff.
 
-About performance, some simple benchmarks show that basic mapper speed is compatible with `dapper`'s.
+About performance, some simple benchmarks show that basic mapper speed is compatible with `dapper`'s:
+
+|    Method |     Mean |   Error |   StdDev |
+|---------- |---------:|--------:|---------:|
+| RelMapper | 247.5 ms | 7.47 ms | 21.32 ms |
+|    Dapper | 248.3 ms | 7.31 ms | 20.49 ms |
+|    Manual | 184.7 ms | 7.37 ms | 21.28 ms |
+
 
 ### Unit test
 
