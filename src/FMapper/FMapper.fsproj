@@ -16,8 +16,8 @@
     <RepositoryUrl>https://github.com/avalente/fsharp-relmapper</RepositoryUrl>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fsharp;sql;orm;dapper</PackageTags>
   </PropertyGroup>
-
 
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath=""/>

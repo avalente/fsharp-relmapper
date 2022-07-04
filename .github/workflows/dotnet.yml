@@ -56,3 +56,8 @@ jobs:
         indicators: true
         output: both
         thresholds: '60 80'
+
+    - name: Push package
+      run: dotnet nuget push release/FMapper.${VERSION}.nupkg --api-key ${NUGET_KEY} --source https://api.nuget.org/v3/index.json
+      env:
+        NUGET_KEY: ${{ secrets.NUGET_KEY }}

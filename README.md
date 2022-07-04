@@ -1,5 +1,7 @@
 # FMapper
 
+[![Nuget](https://img.shields.io/nuget/v/Fable.Modulo?color=0088FF)](https://www.nuget.org/packages/FMapper)
+
 ### What
 This is a simple reflection-based relational mapper for F# data structures, heavily inspired by [Dapper](https://github.com/DapperLib/Dapper).
 
