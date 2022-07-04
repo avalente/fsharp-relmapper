@@ -30,10 +30,20 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release /p:Version=${VERSION}
     - name: Test
-      run: dotnet test --verbosity normal
+      run: dotnet test --verbosity normal --collect:"XPlat Code Coverage" --logger:"junit;LogFilePath=test-results.xml"
     - name: Pack
       run: dotnet pack --configuration Release /p:Version=${VERSION} --output release
     - uses: actions/upload-artifact@v3
       with:
         name: package
         path: release/FMapper.${{env.VERSION}}.nupkg
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v1
+      if: always()
+      with:
+        files: "**/test-results.xml"
+    - name: Code Coverage Summary Report
+      uses: irongut/CodeCoverageSummary@v1.2.0
+      with:
+        filename: "**/coverage.cobertura.xml"
+        output: both

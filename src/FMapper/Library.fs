@@ -156,6 +156,8 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
                 if propType.IsGenericType && propType.GetGenericTypeDefinition() = typedefof<option<_>> then
                     propType.GenericTypeArguments.[0], true
                 else
+                    // this would not work on postgres and possibly other database because
+                    // the nullability information of a query result is unknown
                     //if nullable then failwithf "Type mismatch on field '%s': it shouldn't be nullable" name
                     propType, false
 
