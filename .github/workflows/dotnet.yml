@@ -43,7 +43,7 @@ jobs:
       with:
         files: "**/test-results.xml"
     - name: Copy Coverage To Predictable Location
-      run: cp **/coverage.cobertura.xml coverage.cobertura.xml
+      run: cp tests/FMapper.Tests/TestResults/**/coverage.cobertura.xml coverage.cobertura.xml
     - name: Code Coverage Summary Report
       uses: irongut/CodeCoverageSummary@v1.2.0
       with:
