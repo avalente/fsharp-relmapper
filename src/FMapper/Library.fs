@@ -81,7 +81,11 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
     let map = Dictionary<string, int * bool>()
     let schema = reader.GetColumnSchemaAsync() |> Async.AwaitTask |> Async.RunSynchronously
 
-    do for c in schema do map.Add(c.ColumnName, (c.ColumnOrdinal.Value, c.AllowDBNull.Value))
+    do for c in schema do 
+        let ordinal = c.ColumnOrdinal |> Option.ofNullable |> Option.defaultValue -1
+        let allowDBNull = c.AllowDBNull |> Option.ofNullable |> Option.defaultValue true
+
+        map.Add(c.ColumnName, (ordinal, allowDBNull))
 
     let index (name : string) = self.[name] |> fst
 
@@ -95,7 +99,7 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
 
     member self.TryFind(idx : int) =
         if idx >= schema.Count then None 
-        else Some (idx, schema.[idx].AllowDBNull.Value)
+        else Some (idx, schema.[idx].AllowDBNull.GetValueOrDefault(true))
     
     /// Return a column's index and nullability or raise exception
     member self.Item(name : string) =

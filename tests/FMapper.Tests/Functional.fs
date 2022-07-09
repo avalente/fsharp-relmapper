@@ -20,6 +20,8 @@ type DatabaseWrapper() =
         cmd.ExecuteNonQuery() |> ignore
         use cmd = new SqliteCommand("insert into test values (1, 'this is a test 1', 10.1, null), (2, 'this is another test', 20.0, '2022-06-21')", conn)
         cmd.ExecuteNonQuery() |> ignore
+        use cmd = new SqliteCommand("create table test_empty(id bigint not null, description text not null, value real not null, date date null, primary key(id))", conn)
+        cmd.ExecuteNonQuery() |> ignore
 
     member __.Conn = conn
 
@@ -124,5 +126,17 @@ let testSqlite =
                 let res = db.Conn.QueryOne<Record, _>("select description as Description, value as Value, id as Id from test where id=:id", {|id = 1000|})
                 Expect.isNone res "Row not found"
 
+            "test count query",
+            fun db ->
+                let res = db.Conn.QueryOne<int64>("select count(*) as n from test")
+                let res' = Expect.wantSome res "count(*) is null"
+                Expect.equal res' 2L "count(*)"
+    
+            "test count query empty table",
+            fun db ->
+                let res = db.Conn.QueryOne<int64>("select count(*) as n from test_empty", exactlyOne = true)
+                let res' = Expect.wantSome res "count(*) is null"
+                Expect.equal res' 0L "count(*)"
+    
         ]
     ]
