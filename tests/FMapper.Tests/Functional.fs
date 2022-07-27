@@ -49,6 +49,19 @@ type RecordWithDate =
 
 type Param = {id : int64}
     
+/// sqlite3 doesn't have proper support for types so we must pass a type map
+let typeMap = 
+    CustomTypeMap.Empty
+    |> CustomTypeMap.add (fun wrapper i ->
+        DateTime.Parse(wrapper.Reader.GetString(i))
+    )
+    |> CustomTypeMap.add (fun wrapper i ->
+        if wrapper.Reader.[i] = DBNull.Value then
+            None
+        else
+            DateTime.Parse(wrapper.Reader.GetString(i)) |> Some
+    )
+
 [<Tests>]
 let testSqlite =
     testList "functional tests using a real sqlite connection" [
@@ -76,19 +89,6 @@ let testSqlite =
 
             "test simple query with record and custom type",
             fun db ->
-                /// sqlite3 doesn't have proper support for types so we must pass a type map
-                let typeMap = 
-                    CustomTypeMap.Empty
-                    |> CustomTypeMap.add (fun wrapper i ->
-                        DateTime.Parse(wrapper.Reader.GetString(i))
-                    )
-                    |> CustomTypeMap.add (fun wrapper i ->
-                        if wrapper.Reader.[i] = DBNull.Value then
-                            None
-                        else
-                            DateTime.Parse(wrapper.Reader.GetString(i)) |> Some
-                    )
-
                 let res = 
                     db.Conn.Query<RecordWithDate>("select description as Description, value as Value, id as Id, date as Date from test order by id", typeMap = typeMap) 
                     |> List.ofSeq
@@ -137,6 +137,39 @@ let testSqlite =
                 let res = db.Conn.QueryOne<int64>("select count(*) as n from test_empty", exactlyOne = true)
                 let res' = Expect.wantSome res "count(*) is null"
                 Expect.equal res' 0L "count(*)"
-    
+
+            "test insert with parameters",
+            fun db -> 
+                let pars =
+                    ParameterList.empty
+                    |> ParameterList.add "Id" 1000L
+                    |> ParameterList.add "Description" "test insert with parameters"
+                    |> ParameterList.add "Value" 0.0
+                    |> ParameterList.add "Date" (Some (DateTime(2022, 7, 27)))
+
+                let query = "insert into test values (@Id, @Description, @Value, @Date) returning id"
+                let res = db.Conn.QueryOne<int64>(query, pars, exactlyOne=true)
+                Expect.equal res (Some 1000L) "returning"
+
+                let res = db.Conn.QueryOne<RecordWithDate>("select description as Description, value as Value, id as Id, date as Date from test where id=1000", typeMap = typeMap, exactlyOne = true)
+                let row = Expect.wantSome res "row is found"
+                Expect.equal row {Id = 1000L; Description = "test insert with parameters"; Value = 0.0; Date = Some (DateTime(2022, 7, 27))} "Record equal"
+        
+            "test insert with record",
+            fun db -> 
+                let r =
+                    {
+                        Id = 2000L
+                        Description = "test insert with record"
+                        Value = 0.0
+                        Date = Some (DateTime(2022, 7, 27))
+                    }
+                let query = "insert into test values (@Id, @Description, @Value, @Date) returning id"
+                let res = db.Conn.QueryOne<int64, _>(query, r, exactlyOne=true)
+                Expect.equal res (Some 2000L) "returning"
+
+                let res = db.Conn.QueryOne<RecordWithDate>("select description as Description, value as Value, id as Id, date as Date from test where id=2000", typeMap = typeMap, exactlyOne = true)
+                let row = Expect.wantSome res "row is found"
+                Expect.equal row {Id = 2000L; Description = "test insert with record"; Value = 0.0; Date = Some (DateTime(2022, 7, 27))} "Record equal"
         ]
     ]

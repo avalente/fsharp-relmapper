@@ -297,8 +297,18 @@ type RelMapper() =
         cmd.CommandText <- query
         for k, v in defaultArg pars List.empty |> List.rev do
             let par = cmd.CreateParameter()
-            par.ParameterName <- k
-            par.Value <- v
+            par.ParameterName <- k            
+
+            // deal with option<_>
+            if isNull v then 
+                par.Value <- DBNull.Value
+            else
+                let t = v.GetType()
+                if t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>> then
+                    par.Value <- t.GetProperty("Value").GetValue(v)
+                else
+                    par.Value <- v
+            
             cmd.Parameters.Add(par) |> ignore
 
         match txn with
