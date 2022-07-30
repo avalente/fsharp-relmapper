@@ -171,5 +171,107 @@ let testSqlite =
                 let res = db.Conn.QueryOne<RecordWithDate>("select description as Description, value as Value, id as Id, date as Date from test where id=2000", typeMap = typeMap, exactlyOne = true)
                 let row = Expect.wantSome res "row is found"
                 Expect.equal row {Id = 2000L; Description = "test insert with record"; Value = 0.0; Date = Some (DateTime(2022, 7, 27))} "Record equal"
+
+            "test query with 2 tables",
+            fun db ->
+                let res = 
+                    db.Conn.Query<Record, Record>(
+                        "select 
+                        t1.description as Description, t1.value as Value, t1.id as Id,
+                        t2.description as t2_Description, t2.value as t2_Value, t2.id as t2_Id
+                        from test t1
+                        join test t2 on t1.id = t2.value / 10 - 1
+                        order by t1.id",
+                        col2Strategy = Prefix "t2_"
+
+                    ) 
+                    |> List.ofSeq
+                Expect.sequenceEqual res [{Id = 1; Description = "this is a test 1"; Value = 10.1}, {Id = 2; Description = "this is another test"; Value = 20.0}] "Records equal"
+
+            "test query with 3 tables",
+            fun db ->
+                let res = 
+                    db.Conn.Query<Record, Record, Record>(
+                        "select 
+                        t1.description as Description, t1.value as Value, t1.id as Id,
+                        t2.description as t2_Description, t2.value as t2_Value, t2.id as t2_Id,
+                        t3.description as t3_Description, t3.value as t3_Value, t3.id as t3_Id
+                        from test t1
+                        join test t2 on t1.id = t2.value / 10 - 1
+                        join test t3 on t1.id = t3.id and t3.id < 2
+                        order by t1.id",
+                        col2Strategy = Prefix "t2_",
+                        col3Strategy = Prefix "t3_"
+                    ) 
+                    |> List.ofSeq
+                Expect.sequenceEqual 
+                    res 
+                    [
+                        {Id = 1; Description = "this is a test 1"; Value = 10.1}, {Id = 2; Description = "this is another test"; Value = 20.0}, {Id = 1; Description = "this is a test 1"; Value = 10.1}
+                    ] "Records equal"
+
+            "test query with 4 tables",
+            fun db ->
+                let res = 
+                    db.Conn.Query<Record, Record, Record, RecordWithDate>(
+                        "select 
+                        t1.description as Description, t1.value as Value, t1.id as Id,
+                        t2.description as t2_Description, t2.value as t2_Value, t2.id as t2_Id,
+                        t3.description as t3_Description, t3.value as t3_Value, t3.id as t3_Id,
+                        t4.description as t4_Description, t4.value as t4_Value, t4.id as t4_Id, t4.Date as t4_Date
+                        from test t1
+                        join test t2 on t1.id = t2.value / 10 - 1
+                        join test t3 on t1.id = t3.id and t3.id < 2
+                        join test t4 on t1.id = t4.id - 1
+                        order by t1.id",
+                        col2Strategy = Prefix "t2_",
+                        col3Strategy = Prefix "t3_",
+                        col4Strategy = Prefix "t4_",
+                        typeMap = typeMap
+                    ) 
+                    |> List.ofSeq
+                Expect.sequenceEqual 
+                    res 
+                    [
+                        {Id = 1; Description = "this is a test 1"; Value = 10.1}, 
+                        {Id = 2; Description = "this is another test"; Value = 20.0}, 
+                        {Id = 1; Description = "this is a test 1"; Value = 10.1},
+                        {Id = 2; Description = "this is another test"; Value = 20.0; Date = (Some (DateTime(2022, 6, 21)))}
+                    ] "Records equal"
+
+            "test query with 5 tables",
+            fun db ->
+                let res = 
+                    db.Conn.Query<Record, Record, Record, RecordWithDate, Record>(
+                        "select 
+                        t1.description as Description, t1.value as Value, t1.id as Id,
+                        t2.description as t2_Description, t2.value as t2_Value, t2.id as t2_Id,
+                        t3.description as t3_Description, t3.value as t3_Value, t3.id as t3_Id,
+                        t4.description as t4_Description, t4.value as t4_Value, t4.id as t4_Id, t4.Date as t4_Date,
+                        t5.description as t5_Description, t5.value as t5_Value, t5.id as t5_Id, t5.Date as t5_Date
+                        from test t1
+                        join test t2 on t1.id = t2.value / 10 - 1
+                        join test t3 on t1.id = t3.id and t3.id < 2
+                        join test t4 on t1.id = t4.id - 1
+                        join test t5 on t1.id = t5.id - 1
+                        order by t1.id",
+                        col2Strategy = Prefix "t2_",
+                        col3Strategy = Prefix "t3_",
+                        col4Strategy = Prefix "t4_",
+                        col5Strategy = Prefix "t5_",
+                        typeMap = typeMap
+                    ) 
+                    |> List.ofSeq
+                Expect.sequenceEqual 
+                    res 
+                    [
+                        {Id = 1; Description = "this is a test 1"; Value = 10.1}, 
+                        {Id = 2; Description = "this is another test"; Value = 20.0}, 
+                        {Id = 1; Description = "this is a test 1"; Value = 10.1},
+                        {Id = 2; Description = "this is another test"; Value = 20.0; Date = (Some (DateTime(2022, 6, 21)))},
+                        {Id = 2; Description = "this is another test"; Value = 20.0}
+                    ] "Records equal"
+        
+
         ]
     ]

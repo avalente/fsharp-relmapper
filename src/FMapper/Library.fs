@@ -291,6 +291,27 @@ type RelMapper() =
         let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
         let a2 = RelMapper.Adapter<'t2>(customTypeMap, customAdapter, reader, col2Strategy)
         a1, a2
+
+    static member Adapters<'t1, 't2, 't3>(customTypeMap, customAdapter, reader : DbDataReader, col1Strategy, col2Strategy, col3Strategy) =
+        let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
+        let a2 = RelMapper.Adapter<'t2>(customTypeMap, customAdapter, reader, col2Strategy)
+        let a3 = RelMapper.Adapter<'t3>(customTypeMap, customAdapter, reader, col3Strategy)
+        a1, a2, a3
+
+    static member Adapters<'t1, 't2, 't3, 't4>(customTypeMap, customAdapter, reader : DbDataReader, col1Strategy, col2Strategy, col3Strategy, col4Strategy) =
+        let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
+        let a2 = RelMapper.Adapter<'t2>(customTypeMap, customAdapter, reader, col2Strategy)
+        let a3 = RelMapper.Adapter<'t3>(customTypeMap, customAdapter, reader, col3Strategy)
+        let a4 = RelMapper.Adapter<'t4>(customTypeMap, customAdapter, reader, col4Strategy)
+        a1, a2, a3, a4
+
+    static member Adapters<'t1, 't2, 't3, 't4, 't5>(customTypeMap, customAdapter, reader : DbDataReader, col1Strategy, col2Strategy, col3Strategy, col4Strategy, col5Strategy) =
+        let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
+        let a2 = RelMapper.Adapter<'t2>(customTypeMap, customAdapter, reader, col2Strategy)
+        let a3 = RelMapper.Adapter<'t3>(customTypeMap, customAdapter, reader, col3Strategy)
+        let a4 = RelMapper.Adapter<'t4>(customTypeMap, customAdapter, reader, col4Strategy)
+        let a5 = RelMapper.Adapter<'t5>(customTypeMap, customAdapter, reader, col5Strategy)
+        a1, a2, a3, a4, a5
         
     static member ExecuteRawReader(conn : DbConnection, query : string, pars : ParameterList option, txn : DbTransaction option) =
         let cmd = conn.CreateCommand()
@@ -349,6 +370,50 @@ type RelMapper() =
             while reader.Read() do
                 yield a1 (), a2 ()
         }
+
+    static member Query<'t1, 't2, 't3>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy) =
+        let typeMap = defaultArg typeMap CustomTypeMap.Empty
+        let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
+
+        seq {
+            let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
+            use _ = disposer 
+
+            let a1, a2, a3 = RelMapper.Adapters<'t1, 't2, 't3>(typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs)
+    
+            while reader.Read() do
+                yield a1 (), a2 (), a3 ()
+        }
+
+    static member Query<'t1, 't2, 't3, 't4>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy) =
+        let typeMap = defaultArg typeMap CustomTypeMap.Empty
+        let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
+
+        seq {
+            let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
+            use _ = disposer 
+
+            let a1, a2, a3, a4 = RelMapper.Adapters<'t1, 't2, 't3, 't4>(
+                typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs)
+    
+            while reader.Read() do
+                yield a1 (), a2 (), a3 (), a4 ()
+        }
+
+    static member Query<'t1, 't2, 't3, 't4, 't5>(conn : DbConnection, query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy, ?col5Strategy) =
+        let typeMap = defaultArg typeMap CustomTypeMap.Empty
+        let customAdapters = defaultArg customAdapters CustomTypeAdapterMap.Empty
+
+        seq {
+            let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
+            use _ = disposer 
+
+            let a1, a2, a3, a4, a5 = RelMapper.Adapters<'t1, 't2, 't3, 't4, 't5>(
+                typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs, defaultArg col5Strategy AsIs)
+    
+            while reader.Read() do
+                yield a1 (), a2 (), a3 (), a4 (), a5 ()
+        }
     
     static member Query<'t, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters) =
         let pars' =
@@ -365,6 +430,30 @@ type RelMapper() =
             else
                 failwithf "pars should be a record or a ParameterList"
         RelMapper.Query<'t1, 't2>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+
+    static member Query<'t1, 't2, 't3, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy) =
+        let pars' =
+            if FSharpType.IsRecord typeof<'p> then
+                ParameterList.ofRecord<'p> pars
+            else
+                failwithf "pars should be a record or a ParameterList"
+        RelMapper.Query<'t1, 't2, 't3>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy)
+
+    static member Query<'t1, 't2, 't3, 't4, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy) =
+        let pars' =
+            if FSharpType.IsRecord typeof<'p> then
+                ParameterList.ofRecord<'p> pars
+            else
+                failwithf "pars should be a record or a ParameterList"
+        RelMapper.Query<'t1, 't2, 't3, 't4>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy)
+
+    static member Query<'t1, 't2, 't3, 't4, 't5, 'p> (conn : DbConnection, query : string, pars : 'p, ?txn, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy, ?col5Strategy) =
+        let pars' =
+            if FSharpType.IsRecord typeof<'p> then
+                ParameterList.ofRecord<'p> pars
+            else
+                failwithf "pars should be a record or a ParameterList"
+        RelMapper.Query<'t1, 't2, 't3, 't4, 't5>(conn, query, pars', ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy, ?col5Strategy=col5Strategy)
     
     static member QueryOne<'t>(conn, query, ?pars, ?txn, ?typeMap, ?customAdapters, ?exactlyOne) =
         let exactlyOne = defaultArg exactlyOne false
@@ -384,12 +473,30 @@ type DbConnection with
 
     member self.Query<'t1, 't2>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
         RelMapper.Query<'t1, 't2>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+
+    member self.Query<'t1, 't2, 't3>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy) =
+        RelMapper.Query<'t1, 't2, 't3>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy)
+
+    member self.Query<'t1, 't2, 't3, 't4>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy) =
+        RelMapper.Query<'t1, 't2, 't3, 't4>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy)
+
+    member self.Query<'t1, 't2, 't3, 't4, 't5>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy, ?col5Strategy) =
+        RelMapper.Query<'t1, 't2, 't3, 't4, 't5>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy, ?col5Strategy=col5Strategy)
     
     member self.Query<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
 
     member self.Query<'t1, 't2, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy) =
         RelMapper.Query<'t1, 't2, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy)
+
+    member self.Query<'t1, 't2, 't3, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy) =
+        RelMapper.Query<'t1, 't2, 't3, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy)
+
+    member self.Query<'t1, 't2, 't3, 't4, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy) =
+        RelMapper.Query<'t1, 't2, 't3, 't4, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy)
+
+    member self.Query<'t1, 't2, 't3, 't4, 't5, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?col1Strategy, ?col2Strategy, ?col3Strategy, ?col4Strategy, ?col5Strategy) =
+        RelMapper.Query<'t1, 't2, 't3, 't4, 't5, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?col1Strategy=col1Strategy, ?col2Strategy=col2Strategy, ?col3Strategy=col3Strategy, ?col4Strategy=col4Strategy, ?col5Strategy=col5Strategy)
     
     member self.QueryOne<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?exactlyOne) =
         RelMapper.QueryOne<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?exactlyOne=exactlyOne)

@@ -171,7 +171,7 @@ You can mix supported types as you wish:
 ```
 
 Current limitations: 
-- only 2 types are supported (`.Query<T1, T2>` but not `.Query<T1, T2, T3>`)
+- only 5 types are supported (`.Query<T1, T2, T3, T4, T5>` but not `.Query<T1, T2, T3, T4, T5, T6>`)
 - option types are not supported (only `inner join`s, not `outer`)
 
 ### Reflection is bad!
