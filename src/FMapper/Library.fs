@@ -153,7 +153,7 @@ and DataReaderWrapper(reader : DbDataReader, customTypeMap : CustomTypeMap, cust
             let t = self.Reader.GetFieldType(idx)
             let getter =
                 match baseTypes.TryGetValue(t) with
-                | false, _ -> failwithf "Unsupported data type: '%s'" t.Name
+                | false, _ -> failwithf "Unsupported data type for field '%s': '%s'" name t.Name
                 | true, f -> f
 
             let propType, option =
