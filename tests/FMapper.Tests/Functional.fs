@@ -13,7 +13,7 @@ type DatabaseWrapper() =
     let dbFile = IO.Path.GetTempFileName()
     do logger.logSimple(Message.eventX "Initializing database on {file}" LogLevel.Warn |> Message.setField "file" dbFile)
 
-    let conn = new SqliteConnection($"Data source={dbFile}")
+    let conn = new SqliteConnection($"Data source={dbFile}; Pooling=false")
     do 
         conn.Open()
         use cmd = new SqliteCommand("create table test(id bigint not null, description text not null, value real not null, date date null, primary key(id))", conn)
@@ -21,6 +21,8 @@ type DatabaseWrapper() =
         use cmd = new SqliteCommand("insert into test values (1, 'this is a test 1', 10.1, null), (2, 'this is another test', 20.0, '2022-06-21')", conn)
         cmd.ExecuteNonQuery() |> ignore
         use cmd = new SqliteCommand("create table test_empty(id bigint not null, description text not null, value real not null, date date null, primary key(id))", conn)
+        cmd.ExecuteNonQuery() |> ignore
+        use cmd = new SqliteCommand("create table another_test(id bigint not null, description text default '', value decimal(9, 2) default 0.0, date date null, primary key(id))", conn)
         cmd.ExecuteNonQuery() |> ignore
 
     member __.Conn = conn
@@ -272,6 +274,22 @@ let testSqlite =
                         {Id = 2; Description = "this is another test"; Value = 20.0}
                     ] "Records equal"
         
+            "test cast() with no resultset - specific to sqlite",
+            fun db ->
+                let res = db.Conn.Query<{|id:int64;description:string option;value:decimal option|}>("select id, description, cast(value as REAL) as value from another_test")
+                Expect.isEmpty res "not empty"
+
+            "test cast() with resultset - specific to sqlite",
+            fun db ->
+                let _ = db.Conn.Execute("insert into another_test(id, description, value) values(1, NULL, NULL), (2, NULL, 1.23), (3, 'test', 0)")
+                let tm = CustomTypeMap.Empty |> CustomTypeMap.add(fun wrapper i -> if wrapper.Reader.IsDBNull(i) then None else wrapper.Reader.GetDecimal(i) |> Some)
+                let res = db.Conn.Query<{|id:int64;description:string option;value:decimal option|}>("select id, description, value from another_test order by id", typeMap = tm)
+                Expect.hasLength res 3 "wrong length"
+                let res = res |> Array.ofSeq
+
+                Expect.equal res.[0] {|id = 1L; description = None; value = None|} "row 1"
+                Expect.equal res.[1] {|id = 2L; description = None; value = Some 1.23M|} "row 2"
+                Expect.equal res.[2] {|id = 3L; description = Some "test"; value = Some 0M|} "row 3"
 
         ]
     ]

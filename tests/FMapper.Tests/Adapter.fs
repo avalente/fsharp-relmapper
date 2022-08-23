@@ -522,5 +522,11 @@ let tests =
             let res = [| while reader.Read() do adapter () |]
             Expect.sequenceEqual res [Guid("f74c5e59-e145-430d-aa08-19f67c047865"); Guid("f74c5e59-e145-430d-aa08-19f67c047866")] "results"
 
+        testCase "CustomTypeMap isolation" <| fun _ ->
+            let tm = CustomTypeMap.Empty |> CustomTypeMap.add(fun wrapper int -> 0M)
+            Expect.equal tm.Count 1 "too many items"
+            let tm2 = CustomTypeMap.Empty |> CustomTypeMap.add(fun wrapper int -> 0M) |> CustomTypeMap.add(fun wrapper int -> DateTime.Now)
+            Expect.equal tm.Count 1 "typemap 1 - too many items"
+            Expect.equal tm2.Count 2 "typemap 2 - too many items"
     ]
 

@@ -263,6 +263,13 @@ let adaptPrimitive<'t> (reader : DbDataReader) colStrategy =
 
     fun () ->
         g () |> unbox<'t>
+
+let getAdapter customTypeMap customAdapter reader colStrategy =
+    if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader colStrategy
+    elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader colStrategy
+    elif typeof<'t> = typeof<obj> then failwithf "Unable to adapt type '%s' - maybe you forgot to specify the mapped type, e.g. RelMapper.Query<MyType>(...)?" typeof<'t>.Name
+    elif primitiveTypes.Contains typeof<'t> then adaptPrimitive<'t> reader colStrategy
+    else failwithf "Unable to adapt type '%s'" typeof<'t>.Name
         
 type ParameterList = (string * obj) list
 module ParameterList =
@@ -279,13 +286,17 @@ module ParameterList =
 
 type RelMapper() =
     static member Adapter<'t>(customTypeMap, customAdapter, reader : DbDataReader, ?colStrategy) =
-        let colStrategy = defaultArg colStrategy AsIs
+        // if there are no rows return a dummy function: it will be never called.
+        // this is needed by sqlite because of type affinity: when the returned dataset is empty
+        // there is no reliable way to retrieve correct types. 
+        // WARNING: This is a quick and dirty trick, if it causes unexpected 
+        //          issues we should find a better way
+        if not reader.HasRows then 
+            fun () -> Unchecked.defaultof<'t>
+        else
+            let colStrategy = defaultArg colStrategy AsIs
 
-        if FSharpType.IsRecord(typeof<'t>) then adaptRecord<'t> customTypeMap customAdapter reader colStrategy
-        elif FSharpType.IsTuple(typeof<'t>) then adaptTuple<'t> customTypeMap customAdapter reader colStrategy
-        elif typeof<'t> = typeof<obj> then failwithf "Unable to adapt type '%s' - maybe you forgot to specify the mapped type, e.g. RelMapper.Query<MyType>(...)?" typeof<'t>.Name
-        elif primitiveTypes.Contains typeof<'t> then adaptPrimitive<'t> reader colStrategy
-        else failwithf "Unable to adapt type '%s'" typeof<'t>.Name
+            getAdapter customTypeMap customAdapter reader colStrategy
         
     static member Adapters<'t1, 't2>(customTypeMap, customAdapter, reader : DbDataReader, col1Strategy, col2Strategy) =
         let a1 = RelMapper.Adapter<'t1>(customTypeMap, customAdapter, reader, col1Strategy)
@@ -313,7 +324,7 @@ type RelMapper() =
         let a5 = RelMapper.Adapter<'t5>(customTypeMap, customAdapter, reader, col5Strategy)
         a1, a2, a3, a4, a5
         
-    static member ExecuteRawReader(conn : DbConnection, query : string, pars : ParameterList option, txn : DbTransaction option) =
+    static member GetCommand(conn : DbConnection, query : string, pars : ParameterList option, txn : DbTransaction option) =
         let cmd = conn.CreateCommand()
         cmd.CommandText <- query
         for k, v in defaultArg pars List.empty |> List.rev do
@@ -337,6 +348,10 @@ type RelMapper() =
         | Some txn ->
             cmd.Transaction <- txn
 
+        cmd
+
+    static member ExecuteRawReader(conn : DbConnection, query : string, pars : ParameterList option, txn : DbTransaction option) =
+        let cmd = RelMapper.GetCommand(conn, query, pars, txn)
         let reader = cmd.ExecuteReader()
 
         let disposer = {new IDisposable with member __.Dispose() = reader.Dispose(); cmd.Dispose()}
@@ -393,8 +408,9 @@ type RelMapper() =
             let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
             use _ = disposer 
 
-            let a1, a2, a3, a4 = RelMapper.Adapters<'t1, 't2, 't3, 't4>(
-                typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs)
+            let a1, a2, a3, a4 = 
+                RelMapper.Adapters<'t1, 't2, 't3, 't4>(
+                    typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs)
     
             while reader.Read() do
                 yield a1 (), a2 (), a3 (), a4 ()
@@ -408,8 +424,9 @@ type RelMapper() =
             let disposer, reader = RelMapper.ExecuteRawReader(conn, query, pars, txn)
             use _ = disposer 
 
-            let a1, a2, a3, a4, a5 = RelMapper.Adapters<'t1, 't2, 't3, 't4, 't5>(
-                typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs, defaultArg col5Strategy AsIs)
+            let a1, a2, a3, a4, a5 = 
+                RelMapper.Adapters<'t1, 't2, 't3, 't4, 't5>(
+                    typeMap, customAdapters, reader, defaultArg col1Strategy AsIs, defaultArg col2Strategy AsIs, defaultArg col3Strategy AsIs, defaultArg col4Strategy AsIs, defaultArg col5Strategy AsIs)
     
             while reader.Read() do
                 yield a1 (), a2 (), a3 (), a4 (), a5 ()
@@ -467,6 +484,10 @@ type RelMapper() =
         if exactlyOne then res |> Seq.tryExactlyOne
         else res |> Seq.tryHead
 
+    static member Execute(conn, query, ?pars, ?txn) =
+        use cmd = RelMapper.GetCommand(conn, query, pars, txn)
+        cmd.ExecuteNonQuery()
+
 type DbConnection with
     member self.Query<'t>(query : string, ?pars : ParameterList, ?txn : DbTransaction, ?typeMap, ?customAdapters) =
         RelMapper.Query<'t>(self, query, ?pars=pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters)
@@ -503,4 +524,7 @@ type DbConnection with
 
     member self.QueryOne<'t, 'p>(query : string, pars : 'p, ?txn : DbTransaction, ?typeMap, ?customAdapters, ?exactlyOne) =
         RelMapper.QueryOne<'t, 'p>(self, query, pars, ?txn=txn, ?typeMap=typeMap, ?customAdapters=customAdapters, ?exactlyOne=exactlyOne)
-    
+
+    member self.Execute(query, ?pars, ?txn) =
+        use cmd = RelMapper.GetCommand(self, query, pars, txn)
+        cmd.ExecuteNonQuery()
